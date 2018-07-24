@@ -36,7 +36,9 @@ Database::Database() : driver(get_driver_instance()) {
 				"price INT(4) NULL,"
 				"quantity INT(5) NULL,"
 				"status VARCHAR(45) NULL,"
-				"PRIMARY KEY(ISBN)"
+				"PRIMARY KEY(ISBN) "
+				"FOREIGN KEY(ISBN) "
+				"REFERENCES customers (book_catalog)"
 				");");
 
 			stmt->execute("CREATE TABLE BookStore.customers ("
@@ -56,9 +58,7 @@ Database::Database() : driver(get_driver_instance()) {
 				"Client_id INT NOT NULL,"
 				"books TEXT,"
 				"date_of_order DATE NULL,"
-				"status VARCHAR(45) NULL,"
-				"special_sale INT NULL,"
-				"discount INT NULL,"
+				"status int NULL,"
 				"PRIMARY KEY(order_num),"
 				"FOREIGN KEY(Client_id)"
 				"REFERENCES customers (id)"
@@ -81,6 +81,14 @@ Database::Database() : driver(get_driver_instance()) {
 				"	FOREIGN KEY(supplier_id)"
 				"	REFERENCES BookStore.suppliers (supplier_id))"
 				);
+
+			stmt->execute("CREATE TABLE bookstore.order_statuses ("
+				" status_id INT NOT NULL AUTO_INCREMENT,"
+				"name VARCHAR(45) NULL,"
+				"PRIMARY KEY(status_id));"
+			);
+
+			stmt->execute("CREATE TABLE bookstore.transactions (trans_id INT NOT NULL AUTO_INCREMENT,issue_date DATE NULL,customer_id INT NULL,discount DOUBLE NULL,total_price DOUBLE NULL,status INT NULL,PRIMARY KEY(trans_id),INDEX customer_id_idx(customer_id ASC),INDEX status_idx(status ASC),CONSTRAINT customer_id FOREIGN KEY(customer_id) REFERENCES bookstore.customers(id) ON DELETE NO ACTION ON UPDATE NO ACTION,CONSTRAINT status FOREIGN KEY(status) REFERENCES bookstore.order_statuses(status_id) ON DELETE NO ACTION ON UPDATE NO ACTION);");
 
 			delete stmt;
 		}
