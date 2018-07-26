@@ -1,10 +1,15 @@
 #include <iostream>
 #include "Database.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
+using namespace boost::posix_time;
+using namespace boost::gregorian;
+using namespace std;
 
-bool Display_Inventory(bool in_stock);
-bool Display_Orders(bool open_orders);
+bool Display_Inventory(int type);
+bool Display_Orders(int type);
 bool Display_Customers();
 bool Display_Suppliers();
+bool Display_Transactions(int type);
 
 int main()
 {
@@ -32,7 +37,8 @@ int main()
 		cout << "3) Suppliers" << endl;
 		cout << "4) Show Orders" << endl;
 		cout << "5) Customers" << endl;
-		cout << "6) More options" << endl;
+		cout << "6) Transactions" << endl;
+		cout << "7) More options" << endl;
 		cout << "99) Exit" << endl;
 		cout << "Selection: ";
 		cin >> option;
@@ -41,22 +47,19 @@ int main()
 		case 1:
 			cout << "\t1) Display the entire book catalog" << endl;
 			cout << "\t2) Display only the books that excist in the inventory" << endl;
+			cout << "\t3) Display only the books with discount" << endl;
+			cout << "\t4) Check if a book is in stock" << endl;
+			cout << "\t5) Display suppliers of specific book" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
-			if (sub_option01 == 1)
-				Display_Inventory(false);
-			else
-				Display_Inventory(true);
+			Display_Inventory(sub_option01);
 			break;
 		case 2:
 			cout << "\t1) Display all the orders records" << endl;
 			cout << "\t2) Display only the open orders" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
-			if (sub_option01 == 1)
-				Display_Orders(false);
-			else
-				Display_Orders(true);
+			Display_Orders(sub_option01);
 			break;
 		case 3:
 			cout << "\t1) Display all suppliers" << endl;
@@ -72,6 +75,12 @@ int main()
 			if (sub_option01 == 1)
 				Display_Customers();
 			break;
+		case 6:
+			cout << "\t1) Display transaction between dates" << endl;
+			cout << "\tSelection: ";
+			cin >> sub_option01;
+			Display_Transactions(sub_option01);
+			break;
 		}
 	}
 
@@ -80,25 +89,126 @@ int main()
 
 
 
-bool Display_Inventory(bool in_stock)
+bool Display_Inventory(int type)
 {
-	//in_stock = true: Only in stock
-	//in_stock = false : Display all
+	//type = 1 : Only in stock
+	//type = 2 : Display all
+	//type = 3 : All the books with discount
+	//type = 4 : Check if specific book is in stock
+	//type = 5 : Check who are the suppliers of specific book
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
 	ResultSet *rset;
+	char title[100], author[100];
+	string tmp1,tmp2;
 
 	if (con) {
 		Statement *stmt = con->createStatement();
 
-		if (in_stock == true) {
-			rset = stmt->executeQuery("SELECT book_catalog.ISBN as ISBN, book_catalog.title as title, book_catalog.author as author, book_catalog.publisher as publisher, book.quantity as quantity, book.price as price FROM book_catalog INNER JOIN book on book_catalog.ISBN = book.ISBN WHERE book.quantity > 0;");
+		if (type == 1) {
+			rset = stmt->executeQuery("SELECT book_catalog.ISBN as ISBN, book_catalog.title as title, book_catalog.author as author, book_catalog.publisher as publisher, book.quantity as quantity,book.discount as discount, book.price as price FROM book_catalog INNER JOIN book on book_catalog.ISBN = book.ISBN WHERE book.quantity > 0;");
 		}
-		else
-		{
-			rset = stmt->executeQuery("SELECT book_catalog.ISBN as ISBN, book_catalog.title as title, book_catalog.author as author, book_catalog.publisher as publisher, book.quantity as quantity, book.price as price FROM book_catalog INNER JOIN book on book_catalog.ISBN = book.ISBN;");
+		if (type == 2) {
+			rset = stmt->executeQuery("SELECT book_catalog.ISBN as ISBN, book_catalog.title as title, book_catalog.author as author, book_catalog.publisher as publisher, book.quantity as quantity,book.discount as discount, book.price as price FROM book_catalog INNER JOIN book on book_catalog.ISBN = book.ISBN;");
 		}
+		if (type == 3) {
+			rset = stmt->executeQuery("SELECT book_catalog.ISBN as ISBN, book_catalog.title as title, book_catalog.author as author, book_catalog.publisher as publisher, book.quantity as quantity,book_catalog.discount as discount, book.price as price FROM book_catalog INNER JOIN book on book_catalog.ISBN = book.ISBN WHERE book_catalog.discount > 0;");
+		}
+		if (type == 4) {
+			cin.clear();    // Restore input stream to working state
+			cin.ignore(100, '\n');    // Get rid of any garbage that user might have entered
+			cout << "\t\tTitle: ";
+			cin.getline(title, sizeof(title));
+			//cin.clear();    // Restore input stream to working state
+			//cin.ignore(100, '\n');    // Get rid of any garbage that user might have entered
+			cout << "\t\tAuthor: ";
+			cin.getline(author, sizeof(author));
+			tmp1 = title; tmp2 = author;
+			if (title[0] != '\0' && author[0] != '\0') {
+				PreparedStatement *pstmt = con->prepareStatement("SELECT ISBN FROM book_catalog WHERE title = ? AND author = ?");
+				pstmt->setString(1, tmp1);
+				pstmt->setString(2, tmp2);
+				rset = pstmt->executeQuery();
+				if (rset->rowsCount() == 0) {
+					cout << "\t\tError: The book was not found." << endl; return false;
+				}
+				else {
+					rset->first();
+					int isbn = rset->getInt("ISBN");
+					PreparedStatement *pstmt = con->prepareStatement("SELECT quantity FROM book WHERE ISBN = ?");
+					pstmt->setInt(1, isbn);
+					rset = pstmt->executeQuery();
+					if (rset->rowsCount() == 0)
+						cout << "\t\tError: The book is out of stock";
+					else {
+						rset->first();
+						cout << "\t\tThe book is in stock - " << rset->getInt("quantity") << " left." << endl; return true;
+					}
+				}
+			}
+			if (title[0] != '\0' && author[0] == '\0') {
+				PreparedStatement *pstmt = con->prepareStatement("SELECT ISBN FROM book_catalog WHERE title = ? LIMIT 1");
+				pstmt->setString(1, tmp1);
+				rset = pstmt->executeQuery();
+				if (rset->rowsCount() == 0) {
+					cout << "\t\tError: The book was not found." << endl; return false;
+				}
+				else {
+					rset->first();
+					int isbn = rset->getInt("ISBN");
+					PreparedStatement *pstmt = con->prepareStatement("SELECT quantity FROM book WHERE ISBN = ? LIMIT 1");
+					pstmt->setInt(1, isbn);
+					rset = pstmt->executeQuery();
+					if (rset->rowsCount() == 0)
+						cout << "\t\tError: The book is out of stock" << endl;
+					else {
+						rset->first();
+						cout << "\t\tThe book is in stock - " << rset->getInt("quantity") << " left." << endl; return true;
+					}
+				}
+			}
+			if (title[0] == '\0' && author[0] != '\0') {
+				PreparedStatement *pstmt = con->prepareStatement("SELECT ISBN FROM book_catalog WHERE author = ? LIMIT 1");
+				pstmt->setString(1, tmp2);
+				rset = pstmt->executeQuery();
+				if (rset->rowsCount() == 0) {
+					cout << "\t\tError: The book was not found." << endl; return false;
+				}
+				else {
+					rset->first();
+					int isbn = rset->getInt("ISBN");
+					PreparedStatement *pstmt = con->prepareStatement("SELECT quantity FROM book WHERE ISBN = ? LIMIT 1");
+					pstmt->setInt(1, isbn);
+					rset = pstmt->executeQuery();
+					if (rset->rowsCount() == 0)
+						cout << "\t\tError: The book is out of stock" << endl;
+					else {
+						rset->first();
+						cout << "\t\tThe book is in stock - " << rset->getInt("quantity") << " left." << endl; return true;
+					}
+				}
+			}
+		}
+		if (type == 5) {
+			int book_isbn;
+			cout << "\t\tBook ISBN: ";
+			cin >> book_isbn;
 
+			PreparedStatement *pstmt = con->prepareStatement("SELECT suppliers.name "
+				"FROM supply_price_list "
+				"INNER JOIN suppliers "
+				"ON supply_price_list.supplier_id = suppliers.supplier_id "
+				"WHERE supply_price_list.ISBN = ? "
+			);
+			pstmt->setInt(1, book_isbn);
+			rset = pstmt->executeQuery();
+			cout << endl;
+			while (rset->next())
+			{
+				cout << "\t\tSupplier:\t" << rset->getString("name") << endl;
+			}
+			cout << endl;
+		}
 		while (rset->next())
 		{
 			cout << "ID:\t\t\t" << rset->getInt("ISBN") << endl;
@@ -106,6 +216,7 @@ bool Display_Inventory(bool in_stock)
 			cout << "Author:\t\t\t" << rset->getString("author") << endl;
 			cout << "Publisher:\t\t" << rset->getString("publisher") << endl;
 			cout << "Quantity:\t\t" << rset->getString("quantity") << endl;
+			cout << "Discount:\t\t" << rset->getString("discount") << endl;
 			cout << "Price:\t\t\t" << rset->getString("price") << endl;
 			cout << "----------------------------" << endl;
 		}
@@ -118,37 +229,45 @@ bool Display_Inventory(bool in_stock)
 	return false;
 }
 
-bool Display_Orders(bool open_orders)
+bool Display_Orders(int type)
 {
-	//open_orders = true: Only open orders
-	//open_orders = false : Display all
+	//type = 1: Display all orders
+	//type = 2 : Only open orders
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
-	ResultSet *rset;
+	ResultSet *rset, *rset2;
 
 	if (con) {
 		Statement *stmt = con->createStatement();
 
-		if (open_orders == true) {
-			rset = stmt->executeQuery("SELECT orders.order_num,orders.Client_id,orders.books,orders.date_of_order,order_statuses.name as status FROM orders INNER JOIN order_statuses ON orders.status = order_statuses.status_id where orders.status<>4");
+		if (type == 2) {
+			rset = stmt->executeQuery("SELECT orders.order_num,orders.Client_id,orders.date_of_order,order_statuses.name as status FROM orders INNER JOIN order_statuses ON orders.status = order_statuses.status_id where orders.status<>4");
 		}
-		else
+		if(type == 1)
 		{
-			rset = stmt->executeQuery("SELECT orders.order_num,orders.Client_id,orders.books,orders.date_of_order,order_statuses.name as status FROM orders INNER JOIN order_statuses ON orders.status = order_statuses.status_id");
+			rset = stmt->executeQuery("SELECT orders.order_num,orders.Client_id,orders.date_of_order,order_statuses.name as status FROM orders INNER JOIN order_statuses ON orders.status = order_statuses.status_id");
 		}
-
+		cout << endl;
 		while (rset->next())
 		{
 			cout << "Order num:\t" << rset->getInt("order_num") << endl;
 			cout << "Client id:\t" << rset->getString("Client_id") << endl;
-			cout << "books:\t\t" << rset->getString("books") << endl;
 			cout << "Date Of Order:\t" << rset->getString("date_of_order") << endl;
 			cout << "status:\t\t" << rset->getString("status") << endl;
+			cout << "books orderd:" << endl;
+			PreparedStatement *pstmt = con->prepareStatement("SELECT * FROM orders_books WHERE order_id = ?");
+			pstmt->setInt(1, rset->getInt("order_num"));
+			rset2 = pstmt->executeQuery();
+			while (rset2->next())
+			{
+				cout << "\t\tbook ISBN: " << rset2->getString("ISBN") << endl;
+			}
+			cout << endl;
 			cout << "----------------------------" << endl;
 		}
-		cout << "Amount of records: " << rset->rowsCount() << endl;
 		delete con;
 		delete rset;
+		delete rset2;
 		delete stmt;
 		return true;
 	}
@@ -204,6 +323,89 @@ bool Display_Suppliers()
 			cout << "Phone:\t\t" << rset->getString("phone") << endl;
 			cout << "Address:\t" << rset->getString("address") << endl;
 			cout << "----------------------------" << endl;
+		}
+		cout << "Amount of records: " << rset->rowsCount() << endl;
+		delete con;
+		delete rset;
+		delete stmt;
+		return true;
+	}
+	return false;
+}
+
+bool Display_Transactions(int type)
+{
+//type = 1 -> Display transactions between dates
+//type = 2 -> Display amount of X book purchases above Y date
+	Database &db = Database::getInstance();
+	Connection *con = db.getConnection();
+	ResultSet *rset;
+
+	if (con) {
+		Statement *stmt = con->createStatement();
+		if (type == 1)
+		{
+			string start_date, end_date;
+			bool flag = true;
+			while (flag)
+			{
+				cout << "\t\tStart Date (YYYY-MM-DD): ";
+				cin >> start_date;
+				cout << "\t\tEnd Date (YYYY-MM-DD): ";
+				cin >> end_date;
+				date start_date_formal(from_simple_string(start_date));
+				date end_date_formal(from_simple_string(end_date));
+				if (start_date_formal > end_date_formal) { cout << "\tError: Start date is above the End date! Write again please." << endl; }
+				else { 
+					PreparedStatement *pstmt = con->prepareStatement("SELECT transactions.trans_id,transactions.issue_date,transactions.customer_id,transactions.discount,transactions.total_price,order_statuses.name as status FROM transactions INNER JOIN order_statuses ON transactions.status = order_statuses.status_id where issue_date >= ? AND issue_date <= ?");
+					pstmt->setString(1, to_iso_extended_string(start_date_formal));
+					pstmt->setString(2, to_iso_extended_string(end_date_formal));
+					rset = pstmt->executeQuery();
+					flag = false; 
+				}
+			}
+
+			while (rset->next())
+			{
+				cout << "ID:\t\t" << rset->getInt("trans_id") << endl;
+				cout << "Issue date:\t" << rset->getString("issue_date") << endl;
+				cout << "Customer ID:\t" << rset->getString("customer_id") << endl;
+				cout << "Discount:\t" << rset->getString("discount") << endl;
+				cout << "Total Price:\t" << rset->getString("total_price") << endl;
+				cout << "Status:\t\t" << rset->getString("status") << endl;
+				cout << "----------------------------" << endl;
+			}
+		}
+		if (type == 2)
+		{
+			string issue_date;
+			int book_id;
+			bool flag = true;
+			while (flag)
+			{
+				cout << "\t\tTransaction issue Date (YYYY-MM-DD): ";
+				cin >> issue_date;
+				cout << "\t\tBood ISBN: ";
+				cin >> book_id;
+				date start_date_formal(from_simple_string(issue_date));
+				PreparedStatement *pstmt = con->prepareStatement("SELECT trans_id FROM transactions where issue_date >= ?");
+				pstmt->setString(1, to_iso_extended_string(start_date_formal));
+				rset = pstmt->executeQuery();
+				rset->first();
+				int trans_id = rset->getInt("trans_id");
+				flag = false;
+			}
+
+			while (rset->next())
+			{
+				cout << "ID:\t\t" << rset->getInt("trans_id") << endl;
+				cout << "Issue date:\t" << rset->getString("issue_date") << endl;
+				cout << "Customer ID:\t" << rset->getString("customer_id") << endl;
+				cout << "Discount:\t" << rset->getString("discount") << endl;
+				cout << "Total Price:\t" << rset->getString("total_price") << endl;
+				cout << "Status:\t\t" << rset->getString("status") << endl;
+				cout << "----------------------------" << endl;
+			}
 		}
 		cout << "Amount of records: " << rset->rowsCount() << endl;
 		delete con;

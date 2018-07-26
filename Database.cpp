@@ -90,6 +90,11 @@ Database::Database() : driver(get_driver_instance()) {
 
 			stmt->execute("CREATE TABLE bookstore.transactions (trans_id INT NOT NULL AUTO_INCREMENT,issue_date DATE NULL,customer_id INT NULL,discount DOUBLE NULL,total_price DOUBLE NULL,status INT NULL,PRIMARY KEY(trans_id),INDEX customer_id_idx(customer_id ASC),INDEX status_idx(status ASC),CONSTRAINT customer_id FOREIGN KEY(customer_id) REFERENCES bookstore.customers(id) ON DELETE NO ACTION ON UPDATE NO ACTION,CONSTRAINT status FOREIGN KEY(status) REFERENCES bookstore.order_statuses(status_id) ON DELETE NO ACTION ON UPDATE NO ACTION);");
 
+			stmt->execute("CREATE TABLE bookstore.transactions_books ("
+				"trans_id INT NOT NULL,"
+				"ISBN INT UNSIGNED NOT NULL);");
+
+
 			delete stmt;
 		}
 
