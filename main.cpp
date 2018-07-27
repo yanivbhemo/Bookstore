@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string>
 #include "Database.h"
 #include <boost/date_time/posix_time/posix_time.hpp>
 using namespace boost::posix_time;
@@ -10,6 +11,7 @@ bool Display_Orders(int type);
 bool Display_Customers();
 bool Display_Suppliers();
 bool Display_Transactions(int type);
+int GetCustomerID();
 
 int main()
 {
@@ -77,6 +79,9 @@ int main()
 			break;
 		case 6:
 			cout << "\t1) Display transaction between dates" << endl;
+			cout << "\t2) Display amount of X book purchases above Y date" << endl;
+			cout << "\t3) How many books customer X purchased since Z date" << endl;
+			cout << "\t4) Display the customer that purchased the largest amount of books" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
 			Display_Transactions(sub_option01);
@@ -337,9 +342,11 @@ bool Display_Transactions(int type)
 {
 //type = 1 -> Display transactions between dates
 //type = 2 -> Display amount of X book purchases above Y date
+//type = 3 -> How many books customer X purchased since Z date
+//type = 4 -> Display the customer that purchased the largest amount of books
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
-	ResultSet *rset;
+	ResultSet *rset, *rset2;
 
 	if (con) {
 		Statement *stmt = con->createStatement();
@@ -375,43 +382,175 @@ bool Display_Transactions(int type)
 				cout << "Status:\t\t" << rset->getString("status") << endl;
 				cout << "----------------------------" << endl;
 			}
+			cout << "Amount of records: " << rset->rowsCount() << endl;
 		}
 		if (type == 2)
 		{
 			string issue_date;
-			int book_id;
-			bool flag = true;
-			while (flag)
-			{
-				cout << "\t\tTransaction issue Date (YYYY-MM-DD): ";
-				cin >> issue_date;
-				cout << "\t\tBood ISBN: ";
-				cin >> book_id;
-				date start_date_formal(from_simple_string(issue_date));
-				PreparedStatement *pstmt = con->prepareStatement("SELECT trans_id FROM transactions where issue_date >= ?");
-				pstmt->setString(1, to_iso_extended_string(start_date_formal));
-				rset = pstmt->executeQuery();
-				rset->first();
-				int trans_id = rset->getInt("trans_id");
-				flag = false;
-			}
-
+			int book_id, counter=0, trans_id;
+			cout << "\t\tTransaction issue Date (YYYY-MM-DD): ";
+			cin >> issue_date;
+			cout << "\t\tBood ISBN: ";
+			cin >> book_id;
+			date start_date_formal(from_simple_string(issue_date));
+			PreparedStatement *pstmt = con->prepareStatement("SELECT trans_id FROM transactions where issue_date >= ?");
+			pstmt->setString(1, to_iso_extended_string(start_date_formal));
+			rset = pstmt->executeQuery();
 			while (rset->next())
 			{
-				cout << "ID:\t\t" << rset->getInt("trans_id") << endl;
-				cout << "Issue date:\t" << rset->getString("issue_date") << endl;
-				cout << "Customer ID:\t" << rset->getString("customer_id") << endl;
-				cout << "Discount:\t" << rset->getString("discount") << endl;
-				cout << "Total Price:\t" << rset->getString("total_price") << endl;
-				cout << "Status:\t\t" << rset->getString("status") << endl;
-				cout << "----------------------------" << endl;
+				trans_id = rset->getInt("trans_id");
+				PreparedStatement *pstmt2 = con->prepareStatement("SELECT * FROM transactions_books WHERE trans_id = ? AND ISBN = ?");
+				pstmt2->setInt(1, trans_id);
+				pstmt2->setInt(2, book_id);
+				rset2 = pstmt2->executeQuery();
+				rset2->first();
+				if (rset2->rowsCount() > 0) 
+					counter++;
 			}
+			cout << "\t\t\n- The book: " << book_id << " purchased " << counter << " times since " << issue_date << endl;
 		}
-		cout << "Amount of records: " << rset->rowsCount() << endl;
+		if (type == 3)
+		{
+			string issue_date;
+			int customer_id, counter = 0, trans_id;
+			cout << "\t\tSearch from Date (YYYY-MM-DD): ";
+			cin >> issue_date;
+			customer_id = -1;
+			while (customer_id == -1) { customer_id = GetCustomerID(); }
+			date start_date_formal(from_simple_string(issue_date));
+			PreparedStatement *pstmt = con->prepareStatement(
+				"SELECT trans_id FROM transactions "
+				"WHERE issue_date > ? AND customer_id = ?"
+			);
+			pstmt->setString(1, to_iso_extended_string(start_date_formal));
+			pstmt->setInt(2, customer_id);
+			rset = pstmt->executeQuery();
+			while (rset->next())
+			{
+				trans_id = rset->getInt("trans_id");
+				PreparedStatement *pstmt2 = con->prepareStatement(
+					"SELECT COUNT(ISBN) as counter FROM transactions_books "
+					"WHERE trans_id = ?"
+				);
+				pstmt2->setInt(1, trans_id);
+				rset2 = pstmt2->executeQuery();
+				rset2->first();
+				counter += rset2->getInt("counter");
+			}
+			cout << "\n\t\t- Amount of books customer " << customer_id << " made: " << counter << endl;
+		}
+		if (type == 4)
+		{
+			string issue_date;
+			int max_customer_id, max_counter = 0;
+			PreparedStatement *pstmt = con->prepareStatement(
+				"SELECT trans_id,customer_id FROM transactions"
+			);
+			rset = pstmt->executeQuery();
+			rset->first();
+			max_customer_id = rset->getInt("customer_id");
+			while (rset->next())
+			{
+				PreparedStatement *pstmt2 = con->prepareStatement(
+					"SELECT COUNT(trans_id) as count FROM transactions_books WHERE trans_id = ?"
+				);
+				pstmt2->setInt(1, rset->getInt("trans_id"));
+				rset2 = pstmt2->executeQuery();
+				rset2->first();
+				if (rset2->getInt("count") > max_counter) {
+					max_counter = rset2->getInt("count");
+					max_customer_id = rset->getInt("customer_id");
+				}
+			}
+			cout << "\n\t\t- The customer whom purchased the largest amount of books is: " << max_customer_id << endl;
+		}
 		delete con;
 		delete rset;
 		delete stmt;
 		return true;
 	}
 	return false;
+}
+
+int GetCustomerID()
+{
+	Database &db = Database::getInstance();
+	Connection *con = db.getConnection();
+	ResultSet *rset;
+
+	char fname[40], lname[40], id[10], phone[20];
+	int i_id;
+	string s_fname, s_lname, s_id, s_phone;
+	cin.clear();    // Restore input stream to working state
+	cin.ignore(100, '\n');    // Get rid of any garbage that user might have entered
+	cout << "\t\tCustomer first name: ";
+	cin.getline(fname, sizeof(fname));
+	cout << "\t\tCustomer last name: ";
+	cin.getline(lname, sizeof(lname));
+	cout << "\t\tCustomer id: ";
+	cin.getline(id, sizeof(id));
+	cout << "\t\tCustomer phone number: ";
+	cin.getline(phone, sizeof(phone));
+
+	s_fname = fname; s_lname = lname; s_id = id, s_phone = phone;
+	if( id[0] != '\0') i_id = std::stoi(s_id);
+
+	if (fname[0] != '\0' && lname[0] != '\0' && id[0] == '\0' && phone[0] == '\0')
+	{
+		PreparedStatement *pstmt = con->prepareStatement("SELECT id FROM customers WHERE fname = ? AND lname = ?");
+		pstmt->setString(1, s_fname);
+		pstmt->setString(2, s_lname);
+		rset = pstmt->executeQuery();
+		if (rset->rowsCount() > 1 || rset->rowsCount() == 0) {
+			cout << "\n\t\tError: The system didnt find any customer with these details" << endl;
+			return -1;
+		}
+		rset->first();
+		return rset->getInt("id");
+	}
+	if (fname[0] != '\0' && lname[0] != '\0' && id[0] != '\0' && phone[0] == '\0')
+	{
+		PreparedStatement *pstmt = con->prepareStatement("SELECT id FROM customers WHERE fname = ? AND lname = ? AND id = ?");
+		pstmt->setString(1, s_fname);
+		pstmt->setString(2, s_lname);
+		pstmt->setInt(3, i_id);
+		rset = pstmt->executeQuery();
+		if (rset->rowsCount() > 1 || rset->rowsCount() == 0) {
+			cout << "\n\t\tError: The system didnt find any customer with these details" << endl;
+			return -1;
+		}
+		rset->first();
+		return rset->getInt("id");
+	}
+	if (fname[0] != '\0' && lname[0] != '\0' && id[0] != '\0' && phone[0] != '\0')
+	{
+		PreparedStatement *pstmt = con->prepareStatement("SELECT id FROM customers WHERE fname = ? AND lname = ? AND id = ? AND phone = ?");
+		pstmt->setString(1, s_fname);
+		pstmt->setString(2, s_lname);
+		pstmt->setInt(3, i_id);
+		pstmt->setString(4, s_phone);
+		rset = pstmt->executeQuery();
+		if (rset->rowsCount() > 1 || rset->rowsCount() == 0) {
+			cout << "\n\t\tError: The system didnt find any customer with these details" << endl;
+			return -1;
+		}
+		rset->first();
+		return rset->getInt("id");
+	}
+	if (fname[0] != '\0' && lname[0] != '\0' && id[0] == '\0' && phone[0] != '\0')
+	{
+		PreparedStatement *pstmt = con->prepareStatement("SELECT id FROM customers WHERE fname = ? AND lname = ? AND phone = ?");
+		pstmt->setString(1, s_fname);
+		pstmt->setString(2, s_lname);
+		pstmt->setString(3, s_phone);
+		rset = pstmt->executeQuery();
+		if (rset->rowsCount() > 1 || rset->rowsCount() == 0) {
+			cout << "\n\t\tError: The system didnt find any customer with these details" << endl;
+			return -1;
+		}
+		rset->first();
+		return rset->getInt("id");
+	}
+
+	return 0;
 }
