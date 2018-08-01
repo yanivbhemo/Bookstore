@@ -9,7 +9,7 @@ using namespace std;
 bool Display_Inventory(int type);
 bool Display_Orders(int type);
 bool Display_Customers();
-bool Display_Suppliers();
+bool Display_Suppliers(int type);
 bool Display_Transactions(int type);
 int GetCustomerID();
 
@@ -59,16 +59,18 @@ int main()
 		case 2:
 			cout << "\t1) Display all the orders records" << endl;
 			cout << "\t2) Display only the open orders" << endl;
+			cout << "\t3) Amount of book orderd between dates" << endl;
+			cout << "\t4) Amount of orders which turned into sales" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
 			Display_Orders(sub_option01);
 			break;
 		case 3:
 			cout << "\t1) Display all suppliers" << endl;
+			cout << "\t2) Display the supplier with the largest amount of orders since Y" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
-			if (sub_option01 == 1)
-				Display_Suppliers();
+			Display_Suppliers(sub_option01);
 			break;
 		case 5:
 			cout << "\t1) Display customers which made at least 1 purchase" << endl;
@@ -236,8 +238,10 @@ bool Display_Inventory(int type)
 
 bool Display_Orders(int type)
 {
-	//type = 1: Display all orders
+	//type = 1 : Display all orders
 	//type = 2 : Only open orders
+	//type = 3 : Amount of orders which took place between dates
+	//type = 4 : Amount of orderd which turn into sales
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
 	ResultSet *rset, *rset2;
@@ -247,33 +251,110 @@ bool Display_Orders(int type)
 
 		if (type == 2) {
 			rset = stmt->executeQuery("SELECT orders.order_num,orders.Client_id,orders.date_of_order,order_statuses.name as status FROM orders INNER JOIN order_statuses ON orders.status = order_statuses.status_id where orders.status<>4");
+			cout << endl;
+			while (rset->next())
+			{
+				cout << "Order num:\t" << rset->getInt("order_num") << endl;
+				cout << "Client id:\t" << rset->getString("Client_id") << endl;
+				cout << "Date Of Order:\t" << rset->getString("date_of_order") << endl;
+				cout << "status:\t\t" << rset->getString("status") << endl;
+				cout << "books orderd:" << endl;
+				PreparedStatement *pstmt = con->prepareStatement("SELECT * FROM orders_books WHERE order_id = ?");
+				pstmt->setInt(1, rset->getInt("order_num"));
+				rset2 = pstmt->executeQuery();
+				while (rset2->next())
+				{
+					cout << "\t\tbook ISBN: " << rset2->getString("ISBN") << endl;
+				}
+				cout << endl;
+				cout << "----------------------------" << endl;
+			}
+			delete con;
+			delete rset;
+			delete rset2;
+			delete stmt;
 		}
 		if(type == 1)
 		{
 			rset = stmt->executeQuery("SELECT orders.order_num,orders.Client_id,orders.date_of_order,order_statuses.name as status FROM orders INNER JOIN order_statuses ON orders.status = order_statuses.status_id");
-		}
-		cout << endl;
-		while (rset->next())
-		{
-			cout << "Order num:\t" << rset->getInt("order_num") << endl;
-			cout << "Client id:\t" << rset->getString("Client_id") << endl;
-			cout << "Date Of Order:\t" << rset->getString("date_of_order") << endl;
-			cout << "status:\t\t" << rset->getString("status") << endl;
-			cout << "books orderd:" << endl;
-			PreparedStatement *pstmt = con->prepareStatement("SELECT * FROM orders_books WHERE order_id = ?");
-			pstmt->setInt(1, rset->getInt("order_num"));
-			rset2 = pstmt->executeQuery();
-			while (rset2->next())
-			{
-				cout << "\t\tbook ISBN: " << rset2->getString("ISBN") << endl;
-			}
 			cout << endl;
-			cout << "----------------------------" << endl;
+			while (rset->next())
+			{
+				cout << "Order num:\t" << rset->getInt("order_num") << endl;
+				cout << "Client id:\t" << rset->getString("Client_id") << endl;
+				cout << "Date Of Order:\t" << rset->getString("date_of_order") << endl;
+				cout << "status:\t\t" << rset->getString("status") << endl;
+				cout << "books orderd:" << endl;
+				PreparedStatement *pstmt = con->prepareStatement("SELECT * FROM orders_books WHERE order_id = ?");
+				pstmt->setInt(1, rset->getInt("order_num"));
+				rset2 = pstmt->executeQuery();
+				while (rset2->next())
+				{
+					cout << "\t\tbook ISBN: " << rset2->getString("ISBN") << endl;
+				}
+				cout << endl;
+				cout << "----------------------------" << endl;
+			}
+			delete con;
+			delete rset;
+			delete rset2;
+			delete stmt;
 		}
-		delete con;
-		delete rset;
-		delete rset2;
-		delete stmt;
+		
+		if (type == 3)
+		{
+			string start_date, end_date;
+			bool flag = true;
+			while (flag)
+			{
+				cout << "\t\tStart Date (YYYY-MM-DD): ";
+				cin >> start_date;
+				cout << "\t\tEnd Date (YYYY-MM-DD): ";
+				cin >> end_date;
+				date start_date_formal(from_simple_string(start_date));
+				date end_date_formal(from_simple_string(end_date));
+				if (start_date_formal > end_date_formal) { cout << "\tError: Start date is above the End date! Write again please." << endl; }
+				else {
+					PreparedStatement *pstmt = con->prepareStatement("SELECT COUNT(order_num) as amount FROM orders where date_of_order >= ? AND date_of_order <= ?");
+					pstmt->setString(1, to_iso_extended_string(start_date_formal));
+					pstmt->setString(2, to_iso_extended_string(end_date_formal));
+					rset = pstmt->executeQuery();
+					flag = false;
+				}
+			}
+			rset->first();
+			cout << "\t\t- Between " << start_date << " to " << end_date << ", " << rset->getInt("amount") << " orders made." << endl;
+			delete con;
+			delete rset;
+			delete stmt;
+		}
+		if (type == 4)
+		{
+			string start_date, end_date;
+			bool flag = true;
+			while (flag)
+			{
+				cout << "\t\tStart Date (YYYY-MM-DD): ";
+				cin >> start_date;
+				cout << "\t\tEnd Date (YYYY-MM-DD): ";
+				cin >> end_date;
+				date start_date_formal(from_simple_string(start_date));
+				date end_date_formal(from_simple_string(end_date));
+				if (start_date_formal > end_date_formal) { cout << "\tError: Start date is above the End date! Write again please." << endl; }
+				else {
+					PreparedStatement *pstmt = con->prepareStatement("SELECT COUNT(order_num) as amount FROM orders where date_of_order >= ? AND date_of_order <= ? AND status=6");
+					pstmt->setString(1, to_iso_extended_string(start_date_formal));
+					pstmt->setString(2, to_iso_extended_string(end_date_formal));
+					rset = pstmt->executeQuery();
+					flag = false;
+				}
+			}
+			rset->first();
+			cout << "\t\t- Between " << start_date << " to " << end_date << ", " << rset->getInt("amount") << " orders turn into sales." << endl;
+			delete con;
+			delete rset;
+			delete stmt;
+		}
 		return true;
 	}
 	return false;
@@ -310,26 +391,58 @@ bool Display_Customers()
 	return false;
 }
 
-bool Display_Suppliers()
+bool Display_Suppliers(int type)
 {
+//type = 1 : Display all suppliers
+//type = 2 : Display the supplier that got the largest amount of orders.
+//type = 3 : Amount of book orderd between dates
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
-	ResultSet *rset;
+	ResultSet *rset,*rset2;
 
 	if (con) {
 		Statement *stmt = con->createStatement();
+		if (type == 1) {
+			rset = stmt->executeQuery("SELECT * FROM suppliers");
 
-		rset = stmt->executeQuery("SELECT * FROM suppliers");
-
-		while (rset->next())
-		{
-			cout << "ID:\t\t" << rset->getInt("supplier_id") << endl;
-			cout << "Name:\t\t" << rset->getString("name") << endl;
-			cout << "Phone:\t\t" << rset->getString("phone") << endl;
-			cout << "Address:\t" << rset->getString("address") << endl;
-			cout << "----------------------------" << endl;
+			while (rset->next())
+			{
+				cout << "ID:\t\t" << rset->getInt("supplier_id") << endl;
+				cout << "Name:\t\t" << rset->getString("name") << endl;
+				cout << "Phone:\t\t" << rset->getString("phone") << endl;
+				cout << "Address:\t" << rset->getString("address") << endl;
+				cout << "----------------------------" << endl;
+			}
+			cout << "Amount of records: " << rset->rowsCount() << endl;
 		}
-		cout << "Amount of records: " << rset->rowsCount() << endl;
+		if (type == 2)
+		{
+			string issue_date;
+			int max_customer_id, max_counter = 0;
+			cout << "\t\tFrom Date (YYYY-MM-DD): ";
+			cin >> issue_date;
+			date start_date_formal(from_simple_string(issue_date));
+			PreparedStatement *pstmt = con->prepareStatement(
+				"SELECT order_num FROM orders WHERE date_of_order >= ? ORDER BY date_of_order ASC LIMIT 1"
+			);
+			pstmt->setString(1, to_iso_extended_string(start_date_formal));
+			rset = pstmt->executeQuery();
+			rset->first();
+
+			PreparedStatement *pstmt2 = con->prepareStatement(
+				"SELECT       supplier_id, "
+				"COUNT(supplier_id) AS value_occurrence "
+				"FROM     orders_books "
+				"WHERE order_id >= ? "
+				"GROUP BY supplier_id "
+				"ORDER BY value_occurrence DESC "
+				"LIMIT    1;"
+			);
+			pstmt2->setInt(1, rset->getInt("order_num"));
+			rset2 = pstmt2->executeQuery();
+			rset2->first();
+			cout << "\t\t- The supplier who got the most orders is: " << rset2->getInt("supplier_id") << endl;
+		}
 		delete con;
 		delete rset;
 		delete stmt;
@@ -443,13 +556,17 @@ bool Display_Transactions(int type)
 		{
 			string issue_date;
 			int max_customer_id, max_counter = 0;
+			cout << "\t\tFrom Date (YYYY-MM-DD): ";
+			cin >> issue_date;
+			date start_date_formal(from_simple_string(issue_date));
 			PreparedStatement *pstmt = con->prepareStatement(
-				"SELECT trans_id,customer_id FROM transactions"
+				"SELECT trans_id,customer_id FROM transactions WHERE issue_date >= ?"
 			);
+			pstmt->setString(1, to_iso_extended_string(start_date_formal));
 			rset = pstmt->executeQuery();
 			rset->first();
 			max_customer_id = rset->getInt("customer_id");
-			while (rset->next())
+			do
 			{
 				PreparedStatement *pstmt2 = con->prepareStatement(
 					"SELECT COUNT(trans_id) as count FROM transactions_books WHERE trans_id = ?"
@@ -461,8 +578,8 @@ bool Display_Transactions(int type)
 					max_counter = rset2->getInt("count");
 					max_customer_id = rset->getInt("customer_id");
 				}
-			}
-			cout << "\n\t\t- The customer whom purchased the largest amount of books is: " << max_customer_id << endl;
+			} while (rset->next());
+			cout << "\t\t- The customer whom purchased the largest amount of books is: " << max_customer_id << endl;
 		}
 		delete con;
 		delete rset;
