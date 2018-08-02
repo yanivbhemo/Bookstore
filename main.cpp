@@ -13,7 +13,9 @@ bool Display_Orders(int type);
 bool Display_Customers(int type);
 bool Display_Suppliers(int type);
 bool Display_Transactions(int type);
+bool Display_Employees(int type);
 int GetCustomerID();
+int GetEmployeeNum();
 
 int main()
 {
@@ -41,13 +43,14 @@ int main()
 		cout << "3) Suppliers" << endl;
 		cout << "4) Customers" << endl;
 		cout << "5) Transactions" << endl;
-		cout << "6) More options" << endl;
+		cout << "6) Employees" << endl;
+		cout << "7) Explicit tasks" << endl;
 		cout << "99) Exit" << endl;
 		cout << "Selection: ";
 		cin >> option;
 
 		switch (option) {
-		case 1:
+		case 1://inventory
 			cout << "\t1) Display the entire book catalog" << endl;
 			cout << "\t2) Display only the books that excist in the inventory" << endl;
 			cout << "\t3) Display only the books with discount" << endl;
@@ -57,7 +60,7 @@ int main()
 			cin >> sub_option01;
 			Display_Inventory(sub_option01);
 			break;
-		case 2:
+		case 2://orders
 			cout << "\t1) Display all the orders records" << endl;
 			cout << "\t2) Display only the open orders" << endl;
 			cout << "\t3) Amount of book orderd between dates" << endl;
@@ -66,7 +69,7 @@ int main()
 			cin >> sub_option01;
 			Display_Orders(sub_option01);
 			break;
-		case 3:
+		case 3://suppliers
 			cout << "\t1) Display all suppliers" << endl;
 			cout << "\t2) Display the supplier with the largest amount of orders since Y" << endl;
 			cout << "\t3) Total price of orders from X supplier" << endl;
@@ -74,7 +77,7 @@ int main()
 			cin >> sub_option01;
 			Display_Suppliers(sub_option01);
 			break;
-		case 4:
+		case 4://customers
 			cout << "\t1) Display customers which made at least 1 purchase" << endl;
 			cout << "\t2) Display the amount of discount customer X got since Y" << endl;
 			cout << "\t3) Amount of new customers since Y" << endl;
@@ -82,15 +85,22 @@ int main()
 			cin >> sub_option01;
 			Display_Customers(sub_option01);
 			break;
-		case 5:
+		case 5://transactions
 			cout << "\t1) Display transaction between dates" << endl;
 			cout << "\t2) Display amount of X book purchases above Y date" << endl;
 			cout << "\t3) How many books customer X purchased since Z date" << endl;
 			cout << "\t4) Display the customer that purchased the largest amount of books" << endl;
 			cout << "\t5) Display total profits at Q1, Q2, Q3, Q4" << endl;
+			cout << "\t6) Display the top 10 best sellers from date X" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
 			Display_Transactions(sub_option01);
+			break;
+		case 6://employees
+			cout << "\t1) Display the summary of sales certain employee did between X to Y" << endl;
+			cout << "\tSelection: ";
+			cin >> sub_option01;
+			Display_Employees(sub_option01);
 			break;
 		}
 	}
@@ -412,6 +422,19 @@ bool Display_Customers(int type)
 			rset->first();
 			cout << "\n\t\t- The customer recieved " << rset->getString("sum") << "$ discount since " << issue_date << endl;
 		}
+		if (type == 3)
+		{
+			string start_date;
+			cout << "\t\tFrom Date (YYYY-MM-DD): ";
+			cin >> start_date;
+
+			date start_date_formal(from_simple_string(start_date));
+			PreparedStatement *pstmt = con->prepareStatement("SELECT COUNT(id) as count FROM customers WHERE date_of_register >= ?");
+			pstmt->setString(1, to_iso_extended_string(start_date_formal));
+			rset = pstmt->executeQuery();
+			rset->first();
+			cout << "\n\t\t- " << rset->getInt("count") << " new customers since " << start_date << endl;
+		}
 		return true;
 	}
 	return false;
@@ -472,7 +495,7 @@ bool Display_Suppliers(int type)
 		if (type == 3)
 		{
 			string start_date, end_date;
-			int supplier_id;
+			int supplier_id, counter = 0;
 			cout << "\t\tFrom Date (YYYY-MM-DD): ";
 			cin >> start_date;
 			cout << "\t\tUntil Date (YYYY-MM-DD): ";
@@ -488,14 +511,27 @@ bool Display_Suppliers(int type)
 			pstmt->setString(2, to_iso_extended_string(end_date_formal));
 			rset = pstmt->executeQuery();
 			vector<int> trans_ids;
-			while (rset->next) { trans_ids.push_back(rset->getInt("order_num")); }
+			while (rset->next()) { trans_ids.push_back(rset->getInt("order_num")); }
 			for (size_t i = 0; i < trans_ids.size(); i++)
 			{
 				PreparedStatement *pstmt = con->prepareStatement(
-					"SELECT ISBN from orders_books where supplier_id = ?"
+					"SELECT ISBN from orders_books where supplier_id = ? AND order_id = ?"
 				);
-				pstmt->setString(1, to_iso_extended_string(start_date_formal));
+				pstmt->setInt(1, supplier_id);
+				pstmt->setInt(2, trans_ids[i]);
+				rset = pstmt->executeQuery();
+				while (rset->next())
+				{
+					PreparedStatement *pstmt = con->prepareStatement(
+						"SELECT price from book where ISBN = ? LIMIT 1"
+					);
+					pstmt->setInt(1, rset->getInt("ISBN"));
+					rset2 = pstmt->executeQuery();
+					rset2->first();
+					counter += rset2->getInt("price");
+				}
 			}
+			cout << "\n\t\t- Supplier " << supplier_id << ", got " << counter << "$ worth of orders from our book store, since " << start_date << endl;
 		}
 		delete con;
 		delete rset;
@@ -512,6 +548,7 @@ bool Display_Transactions(int type)
 //type = 3 -> How many books customer X purchased since Z date
 //type = 4 -> Display the customer that purchased the largest amount of books
 //type = 5 -> Display total profits at Q1,Q2,Q3,Q4
+//type = 6 -> Display the top 10 best sellers from date X
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
 	ResultSet *rset, *rset2;
@@ -682,6 +719,43 @@ bool Display_Transactions(int type)
 			rset->first();
 			cout << "\n\t\t- Q4: " << rset->getInt("q4_profit") << "$" << endl;
 		}
+		if (type == 6) {
+			string start_date, end_date;
+			bool flag = true;
+			while (flag)
+			{
+				cout << "\t\tStart Date (YYYY-MM-DD): ";
+				cin >> start_date;
+				cout << "\t\tEnd Date (YYYY-MM-DD): ";
+				cin >> end_date;
+				date start_date_formal(from_simple_string(start_date));
+				date end_date_formal(from_simple_string(end_date));
+				if (start_date_formal > end_date_formal) { cout << "\tError: Start date is above the End date! Write again please." << endl; }
+				else {
+					flag = false;
+					PreparedStatement *pstmt = con->prepareStatement(
+						"SELECT COUNT(transactions_books.ISBN) as amount, book_catalog.title as title "
+						"FROM transactions "
+						"INNER JOIN transactions_books ON transactions.trans_id = transactions_books.trans_id "
+						"INNER JOIN book_catalog ON transactions_books.ISBN = book_catalog.ISBN "
+						"WHERE transactions.issue_date >= ? AND transactions.issue_date <= ? "
+						"GROUP BY transactions_books.ISBN "
+						"ORDER BY amount DESC "
+						"LIMIT 10;"
+					);
+					pstmt->setString(1, to_iso_extended_string(start_date_formal));
+					pstmt->setString(2, to_iso_extended_string(end_date_formal));
+					rset = pstmt->executeQuery();
+					int i = 1;
+					cout << endl;
+					while (rset->next())
+					{
+						cout << "\t\t" << i << "st - " << rset->getString("title") << endl;
+						i++;
+					}
+				}
+			}
+		}
 		delete con;
 		delete rset;
 		delete stmt;
@@ -689,7 +763,54 @@ bool Display_Transactions(int type)
 	}
 	return false;
 }
+bool Display_Employees(int type)
+{
+//type = 1 : Display a summary of all the sales certain employee did between X to Y
+	
+	Database &db = Database::getInstance();
+	Connection *con = db.getConnection();
+	ResultSet *rset, *rset2, *rset3;
 
+	if (type == 1)
+	{
+		string start_date, end_date;
+		int employee_num, counter = 0;
+		cout << "\t\tFrom Date (YYYY-MM-DD): ";
+		cin >> start_date;
+		cout << "\t\tUntil Date (YYYY-MM-DD): ";
+		cin >> end_date;
+		employee_num = GetEmployeeNum();
+		date start_date_formal(from_simple_string(start_date));
+		date end_date_formal(from_simple_string(end_date));
+
+		PreparedStatement *pstmt = con->prepareStatement("SELECT trans_id FROM transactions WHERE employee_num = ? AND issue_date >= ? AND issue_date <= ?");
+		pstmt->setInt(1, employee_num);
+		pstmt->setString(2, to_iso_extended_string(start_date_formal));
+		pstmt->setString(3, to_iso_extended_string(end_date_formal));
+		rset = pstmt->executeQuery();
+		rset->first();
+		do
+		{
+			PreparedStatement *pstmt = con->prepareStatement(
+				"SELECT ISBN FROM transactions_books WHERE trans_id = ?"
+			);
+			pstmt->setInt(1, rset->getInt("trans_id"));
+			rset2 = pstmt->executeQuery();
+			while (rset2->next())
+			{
+				PreparedStatement *pstmt = con->prepareStatement(
+					"SELECT price FROM book WHERE ISBN = ?"
+				);
+				pstmt->setInt(1, rset2->getInt("ISBN"));
+				rset3 = pstmt->executeQuery();
+				rset3->first();
+				counter += rset3->getInt("price");
+			}
+		} while (rset->next());
+		cout << "\n\t\t- Employee number: " << employee_num << " sold " << counter << "$ worth of books" << endl;
+	}
+	return true;
+}
 int GetCustomerID()
 {
 	Database &db = Database::getInstance();
@@ -768,6 +889,57 @@ int GetCustomerID()
 		}
 		rset->first();
 		return rset->getInt("id");
+	}
+
+	return 0;
+}
+int GetEmployeeNum()
+{
+	Database &db = Database::getInstance();
+	Connection *con = db.getConnection();
+	ResultSet *rset;
+
+	char fname[40], lname[40], id[10];
+	int i_id;
+	string s_fname, s_lname, s_id;
+	cin.clear();    // Restore input stream to working state
+	cin.ignore(100, '\n');    // Get rid of any garbage that user might have entered
+	cout << "\t\tEmployee first name: ";
+	cin.getline(fname, sizeof(fname));
+	cout << "\t\tEmployee last name: ";
+	cin.getline(lname, sizeof(lname));
+	cout << "\t\tEmployee id: ";
+	cin.getline(id, sizeof(id));
+
+	s_fname = fname; s_lname = lname; s_id = id;
+	if (id[0] != '\0') i_id = std::stoi(s_id);
+
+	if (fname[0] != '\0' && lname[0] != '\0' && id[0] == '\0')
+	{
+		PreparedStatement *pstmt = con->prepareStatement("SELECT employee_num FROM employees WHERE fname = ? AND lname = ?");
+		pstmt->setString(1, s_fname);
+		pstmt->setString(2, s_lname);
+		rset = pstmt->executeQuery();
+		if (rset->rowsCount() > 1 || rset->rowsCount() == 0) {
+			cout << "\n\t\tError: The system didnt find any employee with these details" << endl;
+			return -1;
+		}
+		rset->first();
+		return rset->getInt("employee_num");
+	}
+	if (fname[0] != '\0' && lname[0] != '\0' && id[0] != '\0')
+	{
+		PreparedStatement *pstmt = con->prepareStatement("SELECT employee_num FROM employees WHERE fname = ? AND lname = ? AND id = ?");
+		pstmt->setString(1, s_fname);
+		pstmt->setString(2, s_lname);
+		pstmt->setInt(3, i_id);
+		rset = pstmt->executeQuery();
+		if (rset->rowsCount() > 1 || rset->rowsCount() == 0) {
+			cout << "\n\t\tError: The system didnt find any employee with these details" << endl;
+			return -1;
+		}
+		rset->first();
+		return rset->getInt("employee_num");
 	}
 
 	return 0;
