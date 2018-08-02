@@ -1,5 +1,7 @@
 #include <iostream>
 #include <string>
+#include <ctime>
+#include <vector>
 #include "Database.h"
 #include <boost/date_time/posix_time/posix_time.hpp>
 using namespace boost::posix_time;
@@ -8,7 +10,7 @@ using namespace std;
 
 bool Display_Inventory(int type);
 bool Display_Orders(int type);
-bool Display_Customers();
+bool Display_Customers(int type);
 bool Display_Suppliers(int type);
 bool Display_Transactions(int type);
 int GetCustomerID();
@@ -37,10 +39,9 @@ int main()
 		cout << "1) Inventory" << endl;
 		cout << "2) Orders" << endl;
 		cout << "3) Suppliers" << endl;
-		cout << "4) Show Orders" << endl;
-		cout << "5) Customers" << endl;
-		cout << "6) Transactions" << endl;
-		cout << "7) More options" << endl;
+		cout << "4) Customers" << endl;
+		cout << "5) Transactions" << endl;
+		cout << "6) More options" << endl;
 		cout << "99) Exit" << endl;
 		cout << "Selection: ";
 		cin >> option;
@@ -68,22 +69,25 @@ int main()
 		case 3:
 			cout << "\t1) Display all suppliers" << endl;
 			cout << "\t2) Display the supplier with the largest amount of orders since Y" << endl;
+			cout << "\t3) Total price of orders from X supplier" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
 			Display_Suppliers(sub_option01);
 			break;
-		case 5:
+		case 4:
 			cout << "\t1) Display customers which made at least 1 purchase" << endl;
+			cout << "\t2) Display the amount of discount customer X got since Y" << endl;
+			cout << "\t3) Amount of new customers since Y" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
-			if (sub_option01 == 1)
-				Display_Customers();
+			Display_Customers(sub_option01);
 			break;
-		case 6:
+		case 5:
 			cout << "\t1) Display transaction between dates" << endl;
 			cout << "\t2) Display amount of X book purchases above Y date" << endl;
 			cout << "\t3) How many books customer X purchased since Z date" << endl;
 			cout << "\t4) Display the customer that purchased the largest amount of books" << endl;
+			cout << "\t5) Display total profits at Q1, Q2, Q3, Q4" << endl;
 			cout << "\tSelection: ";
 			cin >> sub_option01;
 			Display_Transactions(sub_option01);
@@ -360,32 +364,54 @@ bool Display_Orders(int type)
 	return false;
 }
 
-bool Display_Customers()
+bool Display_Customers(int type)
 {
+//type = 3 : Amount of new customers since Y
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
 	ResultSet *rset;
 
 	if (con) {
 		Statement *stmt = con->createStatement();
-
-		rset = stmt->executeQuery("SELECT * FROM customers where amount_of_purcheses > 0");
-
-		while (rset->next())
+		if (type == 1)
 		{
-			cout << "ID:\t\t\t" << rset->getInt("id") << endl;
-			cout << "Full Name:\t\t" << rset->getString("fname") << " " << rset->getString("lname") << endl;
-			cout << "Phone:\t\t\t" << rset->getString("phone") << endl;
-			cout << "Address:\t\t" << rset->getString("address") << endl;
-			cout << "Email:\t\t\t" << rset->getString("email") << endl;
-			cout << "Birthday:\t\t" << rset->getString("birthday") << endl;
-			cout << "Amount of purcheses:\t" << rset->getString("amount_of_purcheses") << endl;
-			cout << "----------------------------" << endl;
+			rset = stmt->executeQuery("SELECT * FROM customers where amount_of_purcheses > 0");
+
+			while (rset->next())
+			{
+				cout << "ID:\t\t\t" << rset->getInt("id") << endl;
+				cout << "Full Name:\t\t" << rset->getString("fname") << " " << rset->getString("lname") << endl;
+				cout << "Phone:\t\t\t" << rset->getString("phone") << endl;
+				cout << "Address:\t\t" << rset->getString("address") << endl;
+				cout << "Email:\t\t\t" << rset->getString("email") << endl;
+				cout << "Birthday:\t\t" << rset->getString("birthday") << endl;
+				cout << "Amount of purcheses:\t" << rset->getString("amount_of_purcheses") << endl;
+				cout << "----------------------------" << endl;
+			}
+			cout << "Amount of records: " << rset->rowsCount() << endl;
+			delete con;
+			delete rset;
+			delete stmt;
 		}
-		cout << "Amount of records: " << rset->rowsCount() << endl;
-		delete con;
-		delete rset;
-		delete stmt;
+		if (type == 2)
+		{
+			string issue_date;
+			int customer_id = GetCustomerID();
+
+			cout << "\t\tFrom Date (YYYY-MM-DD): ";
+			cin >> issue_date;
+			date start_date_formal(from_simple_string(issue_date));
+			PreparedStatement *pstmt = con->prepareStatement(
+				"SELECT SUM((discount * 100) / total_price) as sum "
+				"FROM bookstore.transactions "
+				"WHERE customer_id = ? AND issue_date >= ?"
+			);
+			pstmt->setInt(1, customer_id);
+			pstmt->setString(2, to_iso_extended_string(start_date_formal));
+			rset = pstmt->executeQuery();
+			rset->first();
+			cout << "\n\t\t- The customer recieved " << rset->getString("sum") << "$ discount since " << issue_date << endl;
+		}
 		return true;
 	}
 	return false;
@@ -395,7 +421,7 @@ bool Display_Suppliers(int type)
 {
 //type = 1 : Display all suppliers
 //type = 2 : Display the supplier that got the largest amount of orders.
-//type = 3 : Amount of book orderd between dates
+//type = 3 : Total price of orders from X supplier
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
 	ResultSet *rset,*rset2;
@@ -418,7 +444,7 @@ bool Display_Suppliers(int type)
 		if (type == 2)
 		{
 			string issue_date;
-			int max_customer_id, max_counter = 0;
+			int max_counter = 0;
 			cout << "\t\tFrom Date (YYYY-MM-DD): ";
 			cin >> issue_date;
 			date start_date_formal(from_simple_string(issue_date));
@@ -443,6 +469,34 @@ bool Display_Suppliers(int type)
 			rset2->first();
 			cout << "\t\t- The supplier who got the most orders is: " << rset2->getInt("supplier_id") << endl;
 		}
+		if (type == 3)
+		{
+			string start_date, end_date;
+			int supplier_id;
+			cout << "\t\tFrom Date (YYYY-MM-DD): ";
+			cin >> start_date;
+			cout << "\t\tUntil Date (YYYY-MM-DD): ";
+			cin >> end_date;
+			cout << "\t\tSupplier Id: ";
+			cin >> supplier_id;
+			date start_date_formal(from_simple_string(start_date));
+			date end_date_formal(from_simple_string(end_date));
+			PreparedStatement *pstmt = con->prepareStatement(
+				"SELECT * FROM orders WHERE date_of_order >= ? AND date_of_order <= ?"
+			);
+			pstmt->setString(1, to_iso_extended_string(start_date_formal));
+			pstmt->setString(2, to_iso_extended_string(end_date_formal));
+			rset = pstmt->executeQuery();
+			vector<int> trans_ids;
+			while (rset->next) { trans_ids.push_back(rset->getInt("order_num")); }
+			for (size_t i = 0; i < trans_ids.size(); i++)
+			{
+				PreparedStatement *pstmt = con->prepareStatement(
+					"SELECT ISBN from orders_books where supplier_id = ?"
+				);
+				pstmt->setString(1, to_iso_extended_string(start_date_formal));
+			}
+		}
 		delete con;
 		delete rset;
 		delete stmt;
@@ -457,6 +511,7 @@ bool Display_Transactions(int type)
 //type = 2 -> Display amount of X book purchases above Y date
 //type = 3 -> How many books customer X purchased since Z date
 //type = 4 -> Display the customer that purchased the largest amount of books
+//type = 5 -> Display total profits at Q1,Q2,Q3,Q4
 	Database &db = Database::getInstance();
 	Connection *con = db.getConnection();
 	ResultSet *rset, *rset2;
@@ -580,6 +635,52 @@ bool Display_Transactions(int type)
 				}
 			} while (rset->next());
 			cout << "\t\t- The customer whom purchased the largest amount of books is: " << max_customer_id << endl;
+		}
+		if (type == 5)
+		{
+			time_t now = time(0);
+			tm *ltm = localtime(&now);
+			string q1 = to_string(ltm->tm_year + 1900) + "-07-01";
+			string q2 = to_string(ltm->tm_year + 1900) + "-10-01";
+			string q3 = to_string(ltm->tm_year + 1900) + "-01-01";
+			string q4 = to_string(ltm->tm_year + 1900) + "-04-01";
+
+			date q1_date_formal(from_simple_string(q1));
+			date q2_date_formal(from_simple_string(q2));
+			date q3_date_formal(from_simple_string(q3));
+			date q4_date_formal(from_simple_string(q4));
+			PreparedStatement *pstmt = con->prepareStatement(
+				"SELECT SUM(total_price) as q1_profit FROM transactions WHERE issue_date >= ? AND issue_date < ?"
+			);
+			pstmt->setString(1, to_iso_extended_string(q1_date_formal));
+			pstmt->setString(2, to_iso_extended_string(q2_date_formal));
+			rset = pstmt->executeQuery();
+			rset->first();
+			cout << "\n\t\t- Q1: " << rset->getInt("q1_profit") << "$";
+			PreparedStatement *pstmt2 = con->prepareStatement(
+				"SELECT SUM(total_price) as q2_profit FROM transactions WHERE issue_date >= ? AND issue_date < ?"
+			);
+			pstmt2->setString(1, to_iso_extended_string(q2_date_formal));
+			pstmt2->setString(2, to_iso_extended_string(q3_date_formal));
+			rset = pstmt2->executeQuery();
+			rset->first();
+			cout << "\n\t\t- Q2: " << rset->getInt("q2_profit") << "$";
+			PreparedStatement *pstmt3 = con->prepareStatement(
+				"SELECT SUM(total_price) as q3_profit FROM transactions WHERE issue_date >= ? AND issue_date < ?"
+			);
+			pstmt3->setString(1, to_iso_extended_string(q3_date_formal));
+			pstmt3->setString(2, to_iso_extended_string(q4_date_formal));
+			rset = pstmt3->executeQuery();
+			rset->first();
+			cout << "\n\t\t- Q3: " << rset->getInt("q3_profit") << "$";
+			PreparedStatement *pstmt4 = con->prepareStatement(
+				"SELECT SUM(total_price) as q4_profit FROM transactions WHERE issue_date >= ? AND issue_date < ?"
+			);
+			pstmt4->setString(1, to_iso_extended_string(q4_date_formal));
+			pstmt4->setString(2, to_iso_extended_string(q1_date_formal));
+			rset = pstmt4->executeQuery();
+			rset->first();
+			cout << "\n\t\t- Q4: " << rset->getInt("q4_profit") << "$" << endl;
 		}
 		delete con;
 		delete rset;
