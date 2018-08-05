@@ -44,7 +44,6 @@ int main()
 		cout << "4) Customers" << endl;
 		cout << "5) Transactions" << endl;
 		cout << "6) Employees" << endl;
-		cout << "7) Explicit tasks" << endl;
 		cout << "99) Exit" << endl;
 		cout << "Selection: ";
 		cin >> option;
